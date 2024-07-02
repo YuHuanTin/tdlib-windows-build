@@ -43,6 +43,8 @@ jobs:
           ${{ runner.os }}-build-${{ env.cache-name }}-
 
     - name: Setup and build vcpkg
+      env:
+        VCPKG_MAX_CONCURRENCY: 4
       run: |
         if (!(Test-Path vcpkg)) {
           git clone https://github.com/Microsoft/vcpkg.git
@@ -51,7 +53,7 @@ jobs:
         } else {
           cd vcpkg
         }
-        ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows --jobs 4
+        ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows
 
     - name: Configure and Build TDLib
       env:
