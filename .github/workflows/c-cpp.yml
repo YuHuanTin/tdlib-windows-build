@@ -28,20 +28,40 @@ jobs:
         ref: ${{ github.event.inputs.tdlib_version }}
         submodules: recursive
 
-    - name: Setup vcpkg
+    - name: Cache vcpkg
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-vcpkg
+      with:
+        path: |
+          ${{ github.workspace }}/vcpkg
+          !${{ github.workspace }}/vcpkg/buildtrees
+          !${{ github.workspace }}/vcpkg/packages
+          !${{ github.workspace }}/vcpkg/downloads
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+
+    - name: Setup and build vcpkg
       run: |
-        git clone https://github.com/Microsoft/vcpkg.git
-        cd vcpkg
-        ./bootstrap-vcpkg.bat
-        ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows
+        if (!(Test-Path vcpkg)) {
+          git clone https://github.com/Microsoft/vcpkg.git
+          cd vcpkg
+          ./bootstrap-vcpkg.bat
+        } else {
+          cd vcpkg
+        }
+        ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows --jobs 4
 
     - name: Configure and Build TDLib
+      env:
+        CMAKE_BUILD_PARALLEL_LEVEL: 4
       run: |
         Remove-Item build -Force -Recurse -ErrorAction SilentlyContinue
         mkdir build
         cd build
         cmake -A x64 -DCMAKE_INSTALL_PREFIX:PATH=../tdlib -DCMAKE_TOOLCHAIN_FILE:FILEPATH=../vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }} ..
-        cmake --build . --target install --config ${{ github.event.inputs.build_type }}  --parallel 4
+        cmake --build . --target install --config ${{ github.event.inputs.build_type }} --parallel 4
 
     - name: List TDLib files
       run: dir td/tdlib
