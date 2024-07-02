@@ -5,6 +5,16 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (Release/Debug)'
+        required: true
+        default: 'Release'
+      tdlib_version:
+        description: 'TDLib version or branch'
+        required: true
+        default: 'master'
 
 jobs:
   build:
@@ -14,16 +24,17 @@ jobs:
     - uses: actions/checkout@v2
       with:
         repository: tdlib/td
+        ref: ${{ github.event.inputs.tdlib_version }}
         submodules: recursive
     
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }}
     
     - name: Build
-      run: cmake --build ${{github.workspace}}/build --config Release
+      run: cmake --build ${{github.workspace}}/build --config ${{ github.event.inputs.build_type }}
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: tdlib
-        path: ${{github.workspace}}/build/Release/*.lib
+        path: ${{github.workspace}}/build/${{ github.event.inputs.build_type }}/*.lib
