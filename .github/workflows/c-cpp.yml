@@ -66,10 +66,14 @@ jobs:
         cmake --build . --target install --config ${{ github.event.inputs.build_type }} --parallel 4
 
     - name: List TDLib files
-      run: dir td/tdlib
+      run: |
+        Get-ChildItem -Path tdlib -Recurse
+        Get-ChildItem -Path build/tdlib -Recurse
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: tdlib
-        path: td/tdlib/**/*
+        path: |
+          tdlib/**/*
+          build/tdlib/**/*
