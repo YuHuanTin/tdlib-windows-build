@@ -55,15 +55,29 @@ jobs:
         }
         ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows
 
+    - name: Cache TDLib build
+      uses: actions/cache@v2
+      env:
+        cache-name: cache-tdlib-build
+      with:
+        path: |
+          ${{ github.workspace }}/build
+          ${{ github.workspace }}/tdlib
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.event.inputs.build_type }}-${{ github.event.inputs.tdlib_version }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/CMakeLists.txt') }}
+
     - name: Configure and Build TDLib
       env:
         CMAKE_BUILD_PARALLEL_LEVEL: 4
       run: |
-        Remove-Item build -Force -Recurse -ErrorAction SilentlyContinue
-        mkdir build
-        cd build
-        cmake -A x64 -DCMAKE_INSTALL_PREFIX:PATH=../tdlib -DCMAKE_TOOLCHAIN_FILE:FILEPATH=../vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }} ..
-        cmake --build . --target install --config ${{ github.event.inputs.build_type }} --parallel 4
+        if (!(Test-Path build) -or !(Test-Path tdlib)) {
+          Remove-Item build -Force -Recurse -ErrorAction SilentlyContinue
+          mkdir build
+          cd build
+          cmake -A x64 -DCMAKE_INSTALL_PREFIX:PATH=../tdlib -DCMAKE_TOOLCHAIN_FILE:FILEPATH=../vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=${{ github.event.inputs.build_type }} ..
+          cmake --build . --target install --config ${{ github.event.inputs.build_type }} -j 16
+        } else {
+          echo "Using cached TDLib build"
+        }
 
     - name: List TDLib files
       run: |
