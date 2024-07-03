@@ -1,0 +1,107 @@
+name: AutoUpdate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      tdlib_version:
+        description: 'TDLib version or branch'
+        required: true
+        default: 'master'
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight UTC
+
+jobs:
+  check_for_updates:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check for updates
+        id: check
+        run: |
+          LATEST_COMMIT=$(curl -s "https://api.github.com/repos/tdlib/td/commits/master" | jq -r .sha)
+          LAST_RUN_COMMIT=$(curl -s "https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ github.workflow }}/runs?status=completed&conclusion=success" | jq -r '.workflow_runs[0].head_sha')
+          if [ "$LATEST_COMMIT" != "$LAST_RUN_COMMIT" ]; then
+            echo "Updates found. Triggering build."
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "No updates. Skipping build."
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check_for_updates
+    if: ${{ needs.check_for_updates.outputs.should_run == 'true' || github.event_name != 'schedule' }}
+    strategy:
+      matrix:
+        build_type: [Debug, Release, RelWithDebInfo]
+    runs-on: windows-latest
+    
+    steps:
+    - name: Check CPU Info
+      id: cpu_info
+      run: |
+        $cores = (Get-WmiObject -class Win32_processor).NumberOfLogicalProcessors
+        echo "Number of CPU cores: $cores"
+        echo "cpu_cores=$cores" >> $env:GITHUB_OUTPUT
+
+    - name: Checkout TDLib
+      uses: actions/checkout@v3
+      with:
+        repository: tdlib/td
+        ref: ${{ github.event.inputs.tdlib_version || 'master' }}
+        submodules: recursive
+
+    - name: Cache vcpkg
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-vcpkg
+      with:
+        path: |
+          ${{ github.workspace }}/vcpkg
+          !${{ github.workspace }}/vcpkg/buildtrees
+          !${{ github.workspace }}/vcpkg/packages
+          !${{ github.workspace }}/vcpkg/downloads
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+
+    - name: Setup and build vcpkg
+      env:
+        VCPKG_MAX_CONCURRENCY: ${{ steps.cpu_info.outputs.cpu_cores }}
+      run: |
+        if (!(Test-Path vcpkg)) {
+          git clone https://github.com/Microsoft/vcpkg.git
+          cd vcpkg
+          ./bootstrap-vcpkg.bat
+        } else {
+          cd vcpkg
+        }
+        ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows -j $env:VCPKG_MAX_CONCURRENCY
+
+    - name: Configure and Build TDLib
+      env:
+        CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.cpu_info.outputs.cpu_cores }}
+      run: |
+        Remove-Item build -Force -Recurse -ErrorAction SilentlyContinue
+        mkdir build
+        cd build
+        cmake -A x64 -DCMAKE_INSTALL_PREFIX:PATH=../tdlib -DCMAKE_TOOLCHAIN_FILE:FILEPATH=../vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
+        cmake --build . --target install --config ${{ matrix.build_type }} --parallel $env:CMAKE_BUILD_PARALLEL_LEVEL
+
+    - name: List TDLib files
+      run: |
+        Get-ChildItem -Path tdlib -Recurse
+        Get-ChildItem -Path build/tdlib -Recurse
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: tdlib-${{ matrix.build_type }}
+        path: |
+          tdlib/**/*
+          build/tdlib/**/*
