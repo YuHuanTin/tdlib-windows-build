@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
 
     - name: Cache vcpkg
-      uses: actions/cache@v2
+      uses: actions/cache@v3.4.3
       env:
         cache-name: cache-vcpkg
       with:
@@ -55,7 +55,7 @@ jobs:
         ./vcpkg.exe install gperf:x64-windows openssl:x64-windows zlib:x64-windows
 
     - name: Cache TDLib build
-      uses: actions/cache@v2
+      uses: actions/cache@v3.4.3
       env:
         cache-name: cache-tdlib-build
       with:
@@ -84,7 +84,7 @@ jobs:
         Get-ChildItem -Path build/tdlib -Recurse
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4.6.1
       with:
         name: tdlib-${{ matrix.build_type }}
         path: |
